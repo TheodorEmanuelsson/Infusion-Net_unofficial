@@ -1,3 +1,11 @@
+# Custom ignored files
+
+data/FLIR/
+!data/FLIR/PLACEHOLDER
+data/LLVIP/
+!data/LLVIP/PLACEHOLDER
+mathematics-10-03966-v2.pdf
+zips/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
