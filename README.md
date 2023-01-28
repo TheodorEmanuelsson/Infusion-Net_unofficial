@@ -1,6 +1,6 @@
 # Infusion-Net Unofficial implementation in PyTorch
 
-Implementation of ["Infusion-Net: Inter- and Intra-Weighted Cross-Fusion Network for Multispectral Object Detection"](https://www.mdpi.com/2227-7390/10/21/3966).
+Implementation of ["Infusion-Net: Inter- and Intra-Weighted Cross-Fusion Network for Multispectral Object Detection"](https://www.mdpi.com/2227-7390/10/21/3966) in Special Issue [Advances in Pattern Recognition and Image Analysis](https://www.mdpi.com/journal/mathematics/special_issues/Pattern_Recognition_Image_Analysis) of _Mathematics_ **2022**, 10(21), 3966; https://doi.org/10.3390/math10213966
 
 ## Abstract
 
