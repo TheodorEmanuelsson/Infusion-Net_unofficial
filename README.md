@@ -14,3 +14,11 @@ LLVIP: A Visible-infrared Paired Dataset for Low-light Vision [link](https://bup
 
 FLIR: [link](https://www.flir.in/oem/adas/adas-dataset-form/)
 
+## Notes
+
+This is an implementation based on reading the paper. There are no guarantees that the provided code is exactly what the authors used in the paper. For official implementation contact the authors
+
+## Contributing
+
+Feel free to contribute by making a pull request. Any contribution or feedback is encouraged.
+
