@@ -238,6 +238,11 @@ def apply_linear_3d(x, linear_layer):
     X3 = linear_layer(X2.transpose(-1, -3))
     return X3.transpose(-1, -3).transpose(-1, -2)
 
+def mask_image(tensor, tau):
+    x, y = torch.meshgrid(torch.arange(tensor.shape[1]), torch.arange(tensor.shape[2]))
+    mask = (y >= -x + 2*tau*tensor.shape[2]).float()
+    return tensor * mask
+
 if __name__ == '__main__':
     x = torch.Tensor(1000,4096)
     x.normal_(0,1)
