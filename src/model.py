@@ -20,18 +20,14 @@ class DCT2d(nn.Module):
 
     def mask_image(self, tensor):
         """ Mask lower frequencies in DCT domain following Equation 5"""
-        print(f'Input frequency domain shape: {tensor.shape}')
         x_range = torch.arange(tensor.shape[-1], device=tensor.device)
         y_range = torch.arange(tensor.shape[-2], device=tensor.device)
         x, y = torch.meshgrid(x_range, y_range)
         mask = (y >= -x + 2*self.tau*tensor.shape[-1]).float()
-        print(f'Mask shape: {mask.shape}')
         return tensor * torch.transpose(mask, 0, 1)
     
     def forward(self, x):
-        print(f'Input image to DCT2 Module shape: {x.shape}')
         dct_transform = dct_tools.dct_2d(x, norm=self.norm)
-        print(f'Output frequency domain shape: {dct_transform.shape}')
 
         if self.mask_freq:
             dct_transform = self.mask_image(dct_transform)
@@ -55,6 +51,17 @@ class IDCT2d(nn.Module):
         return inv_dct_transform
 
 class ChannelAttention(nn.Module):
+    """ Channel Attention Module taken from https://github.com/yjn870/RCAN-pytorch 
+    
+    Arguments:
+    ----------
+        num_features: int
+            Number of features in the input tensor
+        reduction: int
+            Reduction factor for the channel attention module
+    """
+
+
     def __init__(self, num_features, reduction):
         super(ChannelAttention, self).__init__()
         self.channel_attention = nn.Sequential(
@@ -70,6 +77,15 @@ class ChannelAttention(nn.Module):
 
 
 class RCAB(nn.Module):
+    """ Residual Channel Attention Block taken from https://github.com/yjn870/RCAN-pytorch 
+    
+    Arguments:
+    ----------
+        num_features: int
+            Number of features in the input tensor
+        reduction: int
+            Reduction factor for the channel attention module
+    """
     def __init__(self, num_features, reduction):
         super(RCAB, self).__init__()
         self.rcab = nn.Sequential(
@@ -83,7 +99,18 @@ class RCAB(nn.Module):
         return self.rcab(x)
 
 class HEBlock(nn.Module):
-    def __init__(self, num_features, reduction, tau:float=0.2, norm:str='ortho', mask_freq:bool=True):
+    """ HE Block for extracting high frequency features 
+    
+    Arguments:
+    ----------
+        tau: float
+            Threshold for masking lower frequencies
+        norm: str
+            Normalization type for DCT
+        mask_freq: bool
+            Whether to mask lower frequencies
+    """
+    def __init__(self, tau:float=0.2, norm:str='ortho', mask_freq:bool=True):
         super(HEBlock, self).__init__()
 
         self.tau = tau
@@ -95,12 +122,25 @@ class HEBlock(nn.Module):
         return self.idct(x)
 
 class HFExtraction(nn.Module):
+    """ HF Extraction Module for extracting high frequency features with RCAB block 
+    
+    Arguments:
+    ----------
+        num_features: int
+            Number of features in the input tensor
+        reduction: int
+            Reduction factor for the channel attention module
+        tau: float
+            Threshold for masking lower frequencies
+        norm: str
+            Normalization type for DCT
+    """
     def __init__(self, num_features:int, reduction:int, tau:float=0.2, norm:str='ortho'):
         super(HFExtraction, self).__init__()
 
         self.tau = tau
 
-        self.hfe = HEBlock(num_features, reduction, tau=self.tau, norm=norm)
+        self.hfe = HEBlock(tau=self.tau, norm=norm)
         self.rcab = RCAB(num_features, reduction)
 
     def forward(self, x):
@@ -109,10 +149,24 @@ class HFExtraction(nn.Module):
         return x + out, he
 
 class HFAssistant(nn.Module):
-    def __init__(self, num_features, reduction, tau=0.2):
+    """ HF Assistant Module for extracting high frequency features with RCAB block for both RGB and IR streams 
+    
+    Arguments:
+    ----------
+        num_features: int
+            Number of features in the input tensor
+        reduction: int
+            Reduction factor for the channel attention module
+        tau: float
+            Threshold for masking lower frequencies
+        norm: str
+            Normalization type for DCT
+    """
+    def __init__(self, num_features, reduction, tau=0.2, norm='ortho'):
         super(HFAssistant, self).__init__()
 
         self.tau = tau
+        self.norm = norm
         self.rgb_stream = HFExtraction(num_features, reduction, tau=self.tau)
         self.ir_stream = HFExtraction(num_features, reduction, tau=self.tau)
 
@@ -123,6 +177,13 @@ class HFAssistant(nn.Module):
         return rgb_residual_rcab, rbg_he, ir_residual_rcab, ir_he
 
 class InputPhaseBlock(nn.Module):
+    """Phase 0 block for the input of the network
+
+    Arguments:
+    ----------
+        num_features: int
+            Number of features after the first convolution
+    """
     def __init__(self, num_features):
         super(InputPhaseBlock, self).__init__()
 
@@ -131,9 +192,11 @@ class InputPhaseBlock(nn.Module):
             nn.ReLU(inplace=True),
             nn.Conv2d(num_features, num_features, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
-            nn.Conv2d(num_features, num_features, kernel_size=3, padding=1),
+            # Stride for downsampling
+            nn.Conv2d(num_features, num_features, kernel_size=3, padding=1, stride=2),
             nn.ReLU(inplace=True),
-            nn.Conv2d(num_features, num_features, kernel_size=3, padding=1),
+            # Stride for downsampling
+            nn.Conv2d(num_features, num_features, kernel_size=3, padding=1, stride=2),
             nn.ReLU(inplace=True)
         )
 
@@ -163,20 +226,29 @@ class InputPhaseBlock(nn.Module):
         return self.final_conv(merged)
         
 class InnerPhaseBlock(nn.Module):
-    def __init__(self, num_features, reduction):
+    """Phase 1, 2, 3 blocks.
+    
+    Arguments:
+    ----------
+        num_features: int
+            Number of input features
+    """
+    def __init__(self, num_features):
         super(InnerPhaseBlock, self).__init__()
 
         self.input_double_conv = nn.Sequential(
+            # Stride for downsampling
             nn.Conv2d(num_features, num_features, kernel_size=3, padding=1, stride=2),
             nn.ReLU(inplace=True),
-            nn.Conv2d(num_features, num_features, kernel_size=3, padding=1),
+            # Stride for downsampling
+            nn.Conv2d(num_features, num_features, kernel_size=3, padding=1, stride=2),
             nn.ReLU(inplace=True)
         )
 
         self.base_double_conv = nn.Sequential(
-            nn.Conv2d(num_features * 2, num_features * 2, kernel_size=3, padding=1),
+            nn.Conv2d(num_features*2, num_features*2, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
-            nn.Conv2d(num_features * 2, num_features * 2, kernel_size=3, padding=1),
+            nn.Conv2d(num_features*2, num_features*2, kernel_size=3, padding=1),
             nn.ReLU(inplace=True)
         )
 
@@ -186,53 +258,41 @@ class InnerPhaseBlock(nn.Module):
         )
 
         self.base_conv = nn.Sequential(
-            nn.Conv2d(num_features * 2, num_features * 2, kernel_size=3, padding=1),
+            nn.Conv2d(num_features*2, num_features * 2, kernel_size=3, padding=1),
             nn.ReLU(inplace=True)
         )
 
         self.final_conv = nn.Sequential(
-            nn.Conv2d(num_features*8, num_features, kernel_size=3, padding=1),
+            nn.Conv2d(num_features*2, num_features, kernel_size=3, padding=1),
             nn.ReLU(inplace=True)
         )
 
-        self.max_pool = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.max_pool = nn.MaxPool2d(kernel_size=4, stride=4)
 
     def forward(self, x):
-        print(f'Input: {x.shape}')
         x1 = self.max_pool(x)
-        print(f'Part maxpool input: {x1.shape}')
         x1 = self.input_conv(x1)
-        print(f'Part 1: {x1.shape}')
         x2 = self.input_double_conv(x)
-        print(f'Part 2: {x2.shape}')
 
         x = torch.cat([x1, x2], dim=1)
-        print(f'Part 3 (concat): {x.shape}')
 
         x1 = self.base_conv(x)
-        print(f'Part 4: {x1.shape}')
 
         x2 = self.base_conv(x)
-        print(f'Part 5: {x2.shape}')
 
         x3 = self.base_double_conv(x2)
-        print(f'Part 6: {x3.shape}')
 
         x4 = self.base_double_conv(x3)
-        print(f'Part 7: {x4.shape}')
 
-        concat_height = torch.cat([x1, x2, x3, x4], dim=2)
-        print(f'Part 8 (concat): {concat_height.shape}')
-        concat_width = torch.cat([concat_height, concat_height], dim=3)
-        print(f'Part 8 (concat): {concat_width.shape}')
-        #merged = torch.cat([concat_height, concat_width], dim=2)
-
-        #merged = torch.cat([x1, x2, x3, x4], dim=1)
-        print(f'Part 8 (concat): {concat_width.shape}')
+        # Concatenate the features such that the output has the same size as the input
+        # Not sure if this is the best way to do it
+        concat_height = torch.cat((x1, x2, x3, x4), dim=3)
+        concat_width = torch.cat((concat_height, concat_height, concat_height, concat_height), dim=2)
 
         return self.final_conv(concat_width)
         
 class WeightFusionParam(nn.Module):
+    """ Weighting parameters for the fusion of the two inputs """
     def __init__(self):
         super(WeightFusionParam, self).__init__()
 
@@ -243,6 +303,7 @@ class WeightFusionParam(nn.Module):
 
 
 class InfusionNet(nn.Module):
+    """ InfusionNet model """
     def __init__(self, num_features, reduction, tau):
         super(InfusionNet, self).__init__()
 
@@ -260,8 +321,8 @@ class InfusionNet(nn.Module):
         self.ir_beta_0 = WeightFusionParam()
 
         # Initialize Phase 1
-        self.rgb_phase_1 = InnerPhaseBlock(num_features, reduction)
-        self.ir_phase_1 = InnerPhaseBlock(num_features, reduction)
+        self.rgb_phase_1 = InnerPhaseBlock(num_features)
+        self.ir_phase_1 = InnerPhaseBlock(num_features)
 
         self.HFA_1 = HFAssistant(num_features, reduction, tau=self.tau)
         # Weightning parameters Phase 1
@@ -274,8 +335,8 @@ class InfusionNet(nn.Module):
         self.ir_weight_1 = WeightFusionParam()
 
         # Initialize Phase 2
-        self.rgb_phase_2 = InnerPhaseBlock(num_features, reduction)
-        self.ir_phase_2 = InnerPhaseBlock(num_features, reduction)
+        self.rgb_phase_2 = InnerPhaseBlock(num_features)
+        self.ir_phase_2 = InnerPhaseBlock(num_features)
 
         self.HFA_2 = HFAssistant(num_features, reduction, tau=self.tau)
         # Weightning parameters Phase 2
@@ -288,8 +349,8 @@ class InfusionNet(nn.Module):
         self.ir_weight_2 = WeightFusionParam()
 
         # Initialize Phase 3
-        self.rgb_phase_3 = InnerPhaseBlock(num_features, reduction)
-        self.ir_phase_3 = InnerPhaseBlock(num_features, reduction)
+        self.rgb_phase_3 = InnerPhaseBlock(num_features)
+        self.ir_phase_3 = InnerPhaseBlock(num_features)
 
         self.HFA_3 = HFAssistant(num_features, reduction)
         # Weightning parameters Phase 3
@@ -308,47 +369,27 @@ class InfusionNet(nn.Module):
         rgb_input = x[:, :3, :, :]
         ir_input = x[:, 3:, :, :]
 
-        print("RGB input shape: ", rgb_input.shape)
-        print("IR input shape: ", ir_input.shape)
-
         ##### Phase 0
         rgb_phase_0 = self.rgb_phase_0(rgb_input)
         ir_phase_0 = self.ir_phase_0(ir_input)
 
-        print("RGB phase 0 shape: ", rgb_phase_0.shape)
-        print("IR phase 0 shape: ", ir_phase_0.shape)
-
         # Pass through HFA
         rgb_residual_rcab_0, rbg_he_0, ir_residual_rcab_0, ir_he_0 = self.HFA_0(rgb_phase_0, ir_phase_0)
-        print("RGB residual RCAB 0 shape: ", rgb_residual_rcab_0.shape)
-        print("RGB HE 0 shape: ", rbg_he_0.shape)
-        print("IR residual RCAB 0 shape: ", ir_residual_rcab_0.shape)
-        print("IR HE 0 shape: ", ir_he_0.shape)
 
         # Residual connections
         out_rgb_0 = rgb_phase_0 + self.rgb_alpha_0(rbg_he_0) + self.rgb_beta_0(ir_residual_rcab_0)
         out_ir_0 = ir_phase_0 + self.ir_alpha_0(ir_he_0) + self.ir_beta_0(rgb_residual_rcab_0)
-        print("RGB out 0 shape: ", out_rgb_0.shape)
-        print("IR out 0 shape: ", out_ir_0.shape)
 
         ##### Phase 1
         rgb_phase_1 = self.rgb_phase_1(out_rgb_0)
         ir_phase_1 = self.ir_phase_1(out_ir_0)
-        print("RGB phase 1 shape: ", rgb_phase_1.shape)
-        print("IR phase 1 shape: ", ir_phase_1.shape)
 
         # Pass through HFA
         rgb_residual_rcab_1, rbg_he_1, ir_residual_rcab_1, ir_he_1 = self.HFA_1(rgb_phase_1, ir_phase_1)
-        print("RGB residual RCAB 1 shape: ", rgb_residual_rcab_1.shape)
-        print("RGB HE 1 shape: ", rbg_he_1.shape)
-        print("IR residual RCAB 1 shape: ", ir_residual_rcab_1.shape)
-        print("IR HE 1 shape: ", ir_he_1.shape)
 
         # Residual connections
         out_rgb_1 = rgb_phase_1 + self.rgb_alpha_1(rbg_he_1) + self.rgb_beta_1(ir_residual_rcab_1)
         out_ir_1 = ir_phase_1 + self.ir_alpha_1(ir_he_1) + self.ir_beta_1(rgb_residual_rcab_1)
-        print("RGB out 1 shape: ", out_rgb_1.shape)
-        print("IR out 1 shape: ", out_ir_1.shape)
 
         # Output Weightning
         detection_map_1 = self.rgb_weight_1(out_rgb_1) + self.ir_weight_1(out_ir_1)
@@ -357,26 +398,12 @@ class InfusionNet(nn.Module):
         rgb_phase_2 = self.rgb_phase_2(out_rgb_1)
         ir_phase_2 = self.ir_phase_2(out_ir_1)
 
-        print("RGB phase 2 shape: ", rgb_phase_2.shape)
-        print("IR phase 2 shape: ", ir_phase_2.shape)
-
-
         # Pass through HFA
         rgb_residual_rcab_2, rbg_he_2, ir_residual_rcab_2, ir_he_2 = self.HFA_2(rgb_phase_2, ir_phase_2)
-
-        print("RGB residual RCAB 2 shape: ", rgb_residual_rcab_2.shape)
-        print("RGB HE 2 shape: ", rbg_he_2.shape)
-        print("IR residual RCAB 2 shape: ", ir_residual_rcab_2.shape)
-        print("IR HE 2 shape: ", ir_he_2.shape)
-
 
         # Residual connections
         out_rgb_2 = rgb_phase_2 + self.rgb_alpha_2(rbg_he_2) + self.rgb_beta_2(ir_residual_rcab_2)
         out_ir_2 = ir_phase_2 + self.ir_alpha_2(ir_he_2) + self.ir_beta_2(rgb_residual_rcab_2)
-
-        print("RGB out 2 shape: ", out_rgb_2.shape)
-        print("IR out 2 shape: ", out_ir_2.shape)
-
 
         # Output Weightning
         detection_map_2 = self.rgb_weight_2(out_rgb_2) + self.ir_weight_2(out_ir_2)
@@ -385,37 +412,18 @@ class InfusionNet(nn.Module):
         rgb_phase_3 = self.rgb_phase_3(out_rgb_2)
         ir_phase_3 = self.ir_phase_3(out_ir_2)
 
-        print("RGB phase 3 shape: ", rgb_phase_3.shape)
-        print("IR phase 3 shape: ", ir_phase_3.shape)
-
-
         # Pass through HFA
         rgb_residual_rcab_3, rbg_he_3, ir_residual_rcab_3, ir_he_3  = self.HFA_3(rgb_phase_3, ir_phase_3)
-
-        print("RGB residual RCAB 3 shape: ", rgb_residual_rcab_3.shape)
-        print("RGB HE 3 shape: ", rbg_he_3.shape)
-        print("IR residual RCAB 3 shape: ", ir_residual_rcab_3.shape)
-        print("IR HE 3 shape: ", ir_he_3.shape)
-
 
         # Residual connections
         out_rgb_3 = rgb_phase_3 + self.rgb_alpha_3(rbg_he_3) + self.rgb_beta_3(ir_residual_rcab_3)
         out_ir_3 = ir_phase_3 + self.ir_alpha_3(ir_he_3) + self.ir_beta_3(rgb_residual_rcab_3)
 
-        print("RGB out 3 shape: ", out_rgb_3.shape)
-        print("IR out 3 shape: ", out_ir_3.shape)
-
         # Output Weightning
         detection_map_3 = self.rgb_weight_3(out_rgb_3) + self.ir_weight_3(out_ir_3)
 
-        print("Detection map 1 shape: ", detection_map_1.shape)
-        print("Detection map 2 shape: ", detection_map_2.shape)
-        print("Detection map 3 shape: ", detection_map_3.shape)
-
         ##### To Detection Map
         detection_map = torch.cat((detection_map_1, detection_map_2, detection_map_3), dim=1)
-
-        print("Detection map output shape: ", detection_map.shape)
 
         return detection_map
 
