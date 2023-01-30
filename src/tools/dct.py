@@ -68,7 +68,6 @@ def dct(x, norm=None):
     x = x.contiguous().view(-1, N)
 
     v = torch.cat([x[:, ::2], x[:, 1::2].flip([1])], dim=1)
-
     Vc = dct_fft_impl(v)
 
     k = - torch.arange(N, dtype=x.dtype, device=x.device)[None, :] * np.pi / (2 * N)
@@ -79,10 +78,11 @@ def dct(x, norm=None):
 
     if norm == 'ortho':
         V[:, 0] /= np.sqrt(N) * 2
-        V[:, 1:] /= np.sqrt(N / 2) * 2
+        V[:, 1:] /= np.sqrt(N / 2) * 2 # *= np.sqrt(2/N)
         V = 2 * V.view(*x_shape)
     elif norm == 'infusion':
-        V /= torch.where(V == 0, np.sqrt(1/N), np.sqrt(2/N))
+        V *= torch.where(V == 0, np.sqrt(1/N), np.sqrt(2/N))
+        V = V.view(*x_shape)
     else:
         V = 2 * V.view(*x_shape)
 

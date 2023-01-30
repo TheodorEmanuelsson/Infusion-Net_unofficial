@@ -12,7 +12,7 @@ class DCT2d(nn.Module):
         tau: float
             Threshold for masking lower frequencies
     """
-    def __init__(self, norm='infusion', tau=0.2, mask_freq:bool=True):
+    def __init__(self, norm='ortho', tau=0.2, mask_freq:bool=True):
         super().__init__()
         self.norm = norm
         self.tau = tau
@@ -21,13 +21,17 @@ class DCT2d(nn.Module):
     def mask_image(self, tensor):
         """ Mask lower frequencies in DCT domain following Equation 5"""
         print(f'Input frequency domain shape: {tensor.shape}')
-        x, y = torch.meshgrid(torch.arange(tensor.shape[-2]), torch.arange(tensor.shape[-1]))
+        x_range = torch.arange(tensor.shape[-1], device=tensor.device)
+        y_range = torch.arange(tensor.shape[-2], device=tensor.device)
+        x, y = torch.meshgrid(x_range, y_range)
         mask = (y >= -x + 2*self.tau*tensor.shape[-1]).float()
-        return tensor * mask
+        print(f'Mask shape: {mask.shape}')
+        return tensor * torch.transpose(mask, 0, 1)
     
     def forward(self, x):
-        print(f'Input image shape: {x.shape}')
-        dct_transform = nn.Parameter(dct_tools.dct_2d(x, norm=self.norm), requires_grad=False)
+        print(f'Input image to DCT2 Module shape: {x.shape}')
+        dct_transform = dct_tools.dct_2d(x, norm=self.norm)
+        print(f'Output frequency domain shape: {dct_transform.shape}')
 
         if self.mask_freq:
             dct_transform = self.mask_image(dct_transform)
@@ -42,7 +46,7 @@ class IDCT2d(nn.Module):
         norm: str
             Normalization type for DCT
     """
-    def __init__(self, norm='infusion'):
+    def __init__(self, norm='ortho'):
         super().__init__()
         self.norm = norm
 
@@ -79,12 +83,11 @@ class RCAB(nn.Module):
         return self.rcab(x)
 
 class HEBlock(nn.Module):
-    def __init__(self, num_features, reduction, tau:float=0.2, norm:str='infusion'):
+    def __init__(self, num_features, reduction, tau:float=0.2, norm:str='ortho', mask_freq:bool=True):
         super(HEBlock, self).__init__()
 
         self.tau = tau
-
-        self.dct = DCT2d(norm=norm, tau=self.tau)
+        self.dct = DCT2d(norm=norm, tau=self.tau, mask_freq=mask_freq)
         self.idct = IDCT2d(norm=norm)
 
     def forward(self, x):
@@ -92,7 +95,7 @@ class HEBlock(nn.Module):
         return self.idct(x)
 
 class HFExtraction(nn.Module):
-    def __init__(self, num_features:int, reduction:int, tau:float=0.2, norm:str='infusion'):
+    def __init__(self, num_features:int, reduction:int, tau:float=0.2, norm:str='ortho'):
         super(HFExtraction, self).__init__()
 
         self.tau = tau
@@ -163,44 +166,71 @@ class InnerPhaseBlock(nn.Module):
     def __init__(self, num_features, reduction):
         super(InnerPhaseBlock, self).__init__()
 
-        self.double_conv = nn.Sequential(
-            nn.Conv2d(num_features, num_features, kernel_size=3, padding=1),
+        self.input_double_conv = nn.Sequential(
+            nn.Conv2d(num_features, num_features, kernel_size=3, padding=1, stride=2),
             nn.ReLU(inplace=True),
             nn.Conv2d(num_features, num_features, kernel_size=3, padding=1),
             nn.ReLU(inplace=True)
         )
 
-        self.base_conv = nn.Sequential(
+        self.base_double_conv = nn.Sequential(
+            nn.Conv2d(num_features * 2, num_features * 2, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(num_features * 2, num_features * 2, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True)
+        )
+
+        self.input_conv = nn.Sequential(
             nn.Conv2d(num_features, num_features, kernel_size=3, padding=1),
             nn.ReLU(inplace=True)
         )
 
+        self.base_conv = nn.Sequential(
+            nn.Conv2d(num_features * 2, num_features * 2, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True)
+        )
+
         self.final_conv = nn.Sequential(
-            nn.Conv2d(num_features*4, num_features, kernel_size=3, padding=1),
+            nn.Conv2d(num_features*8, num_features, kernel_size=3, padding=1),
             nn.ReLU(inplace=True)
         )
 
         self.max_pool = nn.MaxPool2d(kernel_size=2, stride=2)
 
     def forward(self, x):
-
+        print(f'Input: {x.shape}')
         x1 = self.max_pool(x)
-        x1 = self.base_conv(x1)
-        x2 = self.double_conv(x)
+        print(f'Part maxpool input: {x1.shape}')
+        x1 = self.input_conv(x1)
+        print(f'Part 1: {x1.shape}')
+        x2 = self.input_double_conv(x)
+        print(f'Part 2: {x2.shape}')
 
         x = torch.cat([x1, x2], dim=1)
+        print(f'Part 3 (concat): {x.shape}')
 
         x1 = self.base_conv(x)
+        print(f'Part 4: {x1.shape}')
 
         x2 = self.base_conv(x)
+        print(f'Part 5: {x2.shape}')
 
-        x3 = self.double_conv(x2)
+        x3 = self.base_double_conv(x2)
+        print(f'Part 6: {x3.shape}')
 
-        x4 = self.double_conv(x3)
+        x4 = self.base_double_conv(x3)
+        print(f'Part 7: {x4.shape}')
 
-        merged = torch.cat([x1, x2, x3, x4], dim=1)
+        concat_height = torch.cat([x1, x2, x3, x4], dim=2)
+        print(f'Part 8 (concat): {concat_height.shape}')
+        concat_width = torch.cat([concat_height, concat_height], dim=3)
+        print(f'Part 8 (concat): {concat_width.shape}')
+        #merged = torch.cat([concat_height, concat_width], dim=2)
 
-        return self.final_conv(merged)
+        #merged = torch.cat([x1, x2, x3, x4], dim=1)
+        print(f'Part 8 (concat): {concat_width.shape}')
+
+        return self.final_conv(concat_width)
         
 class WeightFusionParam(nn.Module):
     def __init__(self):
