@@ -1,3 +1,17 @@
+# Custom ignored files
+
+data/FLIR/images_rgb_train
+data/FLIR/images_rgb_val
+data/FLIR/images_thermal_train
+data/FLIR/images_thermal_val
+data/FLIR/rgb_to_thermal_vid_map.json
+data/LLVIP/Annotations
+data/LLVIP/infrared
+data/LLVIP/visible
+data/LLVIP/LLVIP.json
+mathematics-10-03966-v2.pdf
+zips/
+src/yolov7/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
