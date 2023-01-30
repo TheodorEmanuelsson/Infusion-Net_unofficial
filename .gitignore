@@ -11,6 +11,7 @@ data/LLVIP/visible
 data/LLVIP/LLVIP.json
 mathematics-10-03966-v2.pdf
 zips/
+src/yolov7/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
