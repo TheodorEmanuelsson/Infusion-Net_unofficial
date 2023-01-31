@@ -197,7 +197,7 @@ class InputPhaseBlock(nn.Module):
             nn.ReLU(inplace=True),
             nn.Conv2d(num_features, num_features, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
-            nn.Conv2d(num_features, num_features, kernel_size=5, padding=1, stride=2),
+            nn.Conv2d(num_features, num_features, kernel_size=3, padding=1, stride=2),
             nn.ReLU(inplace=True)
         )
 

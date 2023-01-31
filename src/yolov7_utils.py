@@ -781,7 +781,6 @@ class EELAN(nn.Module):
         self,
         depths=(4, 4, 4, 4),
         channels=(64, 128, 256, 512, 1024),
-        input_channels=3,
         out_features=("stage2", "stage3", "stage4"),
         norm='bn',
         act="silu",
@@ -791,36 +790,35 @@ class EELAN(nn.Module):
         # parameters of the network
         assert out_features, "please provide output features of EELAN!"
         self.out_features = out_features
-        print('Initializing EELAN backbone...')
+
         # stem
-        print('Initializing stem...')
         self.stem = nn.Sequential(
-            BaseConv(input_channels, 32, 3, 1, norm=norm, act=act),
+            BaseConv(3, 32, 3, 1, norm=norm, act=act),
             BaseConv(32, channels[0], 3, 2, norm=norm, act=act),
             BaseConv(channels[0], channels[0], 3, 1, norm=norm, act=act),
         )
-        print('Initializing stage1...')
+
         # stage1
         self.stage1 = nn.Sequential(
             BaseConv(channels[0], channels[1], 3, 2, norm=norm, act=act),
             CSPLayer(channels[1], channels[2], expansion=0.5, num_bottle=depths[0], norm=norm, act=act),
         )
-        print('Initializing stage2...')
+
         # stage2
         self.stage2 = nn.Sequential(
             Transition(channels[2], channels[2], mpk=2, norm=norm, act=act),
             CSPLayer(channels[2], channels[3], expansion=0.5, num_bottle=depths[1], norm=norm, act=act),
         )
-        print('Initializing stage3...')
+
         # stage3
         self.stage3 = nn.Sequential(
-            Transition(channels[3], channels[3], mpk=2, norm=norm, act=act),
+            Transition(channels[3], channels[2], mpk=2, norm=norm, act=act),
             CSPLayer(channels[3], channels[4], expansion=0.5, num_bottle=depths[2], norm=norm, act=act),
         )
-        print('Initializing stage4...')
+
         # stage4
         self.stage4 = nn.Sequential(
-            Transition(channels[4], channels[4], mpk=2, norm=norm, act=act),
+            Transition(channels[4], channels[2], mpk=2, norm=norm, act=act),
             SPPBottleneck(channels[4], channels[4], norm=norm, act=act),
             CSPLayer(channels[4], channels[4], expansion=0.5, num_bottle=depths[3], norm=norm, act=act),
         )
