@@ -70,12 +70,15 @@ class ChannelAttention(nn.Module):
             nn.AdaptiveAvgPool2d(1),
             nn.Conv2d(num_features, num_features // reduction, kernel_size=1),
             nn.ReLU(inplace=True),
-            nn.Conv2d(num_features // reduction, num_features, kernel_size=1),
+            nn.Conv2d(num_features // reduction, num_features , kernel_size=1),
             nn.Sigmoid()
         )
 
     def forward(self, x):
-        return x + self.channel_attention(x)
+        print(f'Input Channel attention {x.shape}')
+        attention = self.channel_attention(x)
+        print(f'Output Channel attention {attention.shape}')
+        return x + attention
 
 
 class RCAB(nn.Module):
@@ -91,13 +94,14 @@ class RCAB(nn.Module):
     def __init__(self, num_features, reduction):
         super(RCAB, self).__init__()
         self.rcab = nn.Sequential(
-            nn.Conv2d(num_features, num_features, kernel_size=3, padding=1),
+            nn.Conv2d(3, num_features, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
             nn.Conv2d(num_features, num_features, kernel_size=3, padding=1),
             ChannelAttention(num_features, reduction)
         )
 
     def forward(self, x):
+        print(f'Input RCAB {x.shape}')
         return self.rcab(x)
 
 class HEBlock(nn.Module):
@@ -146,8 +150,11 @@ class HFExtraction(nn.Module):
         self.rcab = RCAB(num_features, reduction)
 
     def forward(self, x):
+        print(f'Input HFExtraction {x.shape}')
         he = self.hfe(x)
+        print(f'Output HFExtraction {he.shape}')
         out = self.rcab(he)
+        print(f'Output RCAB {out.shape}')
         return x + out, he
 
 class HFAssistant(nn.Module):
@@ -208,7 +215,7 @@ class InputPhaseBlock(nn.Module):
         )
 
         self.final_conv = nn.Sequential(
-            nn.Conv2d(num_features*4, num_features, kernel_size=3, padding=1),
+            nn.Conv2d(num_features*4, 3, kernel_size=3, padding=1),
             nn.ReLU(inplace=True)
         )
 

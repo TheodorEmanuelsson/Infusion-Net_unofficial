@@ -12,16 +12,10 @@ class YOLOv7(nn.Module):
 
         self.cfg = load_config(cfg_path)
 
-        cbackbone = self.cfg['backbone']
-        cneck = self.cfg['neck']
-        chead = self.cfg['head']
-        closs = self.cfg['loss']
-        cbackbone['input_channels'] = self.input_features
-
-        self.backbone = eval(cbackbone['name'])(cbackbone)
-        self.neck = eval(cneck['name'])(cneck)
-        self.head = eval(chead['name'])(chead)
-        self.loss = eval(closs['name'])(closs)
+        self.backbone = EELAN(self.cfg['backbone']['depths'], self.cfg['backbone']['channels'], self.input_features, self.cfg['backbone']['outputs'], self.cfg['backbone']['norm'], self.cfg['backbone']['act'])
+        self.neck = YOLOv7NECK(self.cfg['neck']['depths'], self.cfg['neck']['channels'], self.cfg['neck']['norm'], self.cfg['neck']['act'])
+        self.head = ImplicitHead(self.cfg['head']['num_class'], self.cfg['head']['num_anchor'], self.cfg['head']['channels'])
+        self.loss = YOLOv7Loss(self.cfg['loss']['num_class'], self.cfg['loss']['stride'], self.cfg['loss']['anchors'])
 
     def forward(self, x, targets=None):
         x = self.backbone(x)
@@ -32,21 +26,6 @@ class YOLOv7(nn.Module):
             return self.loss(x, targets)
 
         return x
-def eelan(cfg):
-    backbone = EELAN(cfg['depths'], cfg['channels'], cfg['input_channels'], cfg['outputs'], cfg['norm'], cfg['act'])
-    return backbone
-
-def yolov7neck(cfg):
-    neck = YOLOv7NECK(cfg['depths'], cfg['channels'], cfg['norm'], cfg['act'])
-    return neck
-
-def implicit_head(cfg):
-    head = ImplicitHead(cfg['num_class'], cfg['num_anchor'], cfg['channels'])
-
-def yolov7(cfg):
-    head = YOLOv7Loss(cfg['num_class'], cfg['stride'], cfg['anchors'])
-    return head
-
 
 
         
