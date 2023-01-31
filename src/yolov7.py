@@ -10,7 +10,7 @@ class YOLOv7(nn.Module):
         self.num_classes = num_classes
         self.input_features = num_features
 
-        cfg = load_config(cfg_path)
+        self.cfg = load_config(cfg_path)
 
         cbackbone = self.cfg['backbone']
         cneck = self.cfg['neck']
