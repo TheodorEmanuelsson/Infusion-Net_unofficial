@@ -42,8 +42,8 @@ def yolov7neck(cfg):
 def implicit_head(cfg):
     head = ImplicitHead(cfg['num_class'], cfg['num_anchor'], cfg['channels'])
 
-def yolov7(cfg, num_classes):
-    head = YOLOv7Loss(num_classes, cfg['stride'], cfg['anchors'])
+def yolov7(cfg):
+    head = YOLOv7Loss(cfg['num_class'], cfg['stride'], cfg['anchors'])
     return head
 
 

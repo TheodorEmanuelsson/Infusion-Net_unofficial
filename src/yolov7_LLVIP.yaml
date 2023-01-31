@@ -23,7 +23,7 @@ head:
 
 loss:
     name: yolov7
-    num_class: 6
+    num_class: 1
     stride: [8,16,32]
     anchors:
         - [ [ 12,16 ], [ 19,36 ], [ 40,28 ] ]  # P3/8
