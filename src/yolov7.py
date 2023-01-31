@@ -16,6 +16,7 @@ class YOLOv7(nn.Module):
         cneck = self.cfg['neck']
         chead = self.cfg['head']
         closs = self.cfg['loss']
+        cbackbone['input_channels'] = self.input_features
 
         self.backbone = eval(cbackbone['name'])(cbackbone)
         self.neck = eval(cneck['name'])(cneck)
@@ -32,7 +33,7 @@ class YOLOv7(nn.Module):
 
         return x
 def eelan(cfg):
-    backbone = EELAN(cfg['depths'], cfg['channels'], cfg['infusion_features'], cfg['outputs'], cfg['norm'], cfg['act'])
+    backbone = EELAN(cfg['depths'], cfg['channels'], cfg['input_channels'], cfg['outputs'], cfg['norm'], cfg['act'])
     return backbone
 
 def yolov7neck(cfg):

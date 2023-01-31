@@ -781,7 +781,7 @@ class EELAN(nn.Module):
         self,
         depths=(4, 4, 4, 4),
         channels=(64, 128, 256, 512, 1024),
-        infusion_features = 192,
+        input_channels=3,
         out_features=("stage2", "stage3", "stage4"),
         norm='bn',
         act="silu",
@@ -795,7 +795,7 @@ class EELAN(nn.Module):
         # stem
         print('Initializing stem...')
         self.stem = nn.Sequential(
-            BaseConv(infusion_features, 32, 3, 1, norm=norm, act=act),
+            BaseConv(input_channels, 32, 3, 1, norm=norm, act=act),
             BaseConv(32, channels[0], 3, 2, norm=norm, act=act),
             BaseConv(channels[0], channels[0], 3, 1, norm=norm, act=act),
         )

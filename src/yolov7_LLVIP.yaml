@@ -2,7 +2,6 @@ backbone:
     name: eelan
     depths: [4,4,4,4]
     channels: [64,128,256,512,1024] # five blocks
-    infusion_features: 48
     outputs: [ "stage2", "stage3", "stage4" ]
     norm: bn
     act: silu
