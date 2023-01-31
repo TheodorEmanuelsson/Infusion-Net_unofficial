@@ -11,6 +11,7 @@ class YOLOv7(nn.Module):
         self.input_features = num_features
 
         self.cfg = load_config(cfg_path)
+        self.cfg[]
 
         cbackbone = self.cfg['backbone']
         cneck = self.cfg['neck']
@@ -39,8 +40,8 @@ def yolov7neck(cfg):
     neck = YOLOv7NECK(cfg['depths'], cfg['channels'], cfg['norm'], cfg['act'])
     return neck
 
-def implicit_head(cfg, num_classes):
-    head = ImplicitHead(num_classes, cfg['num_anchor'], cfg['channels'])
+def implicit_head(cfg):
+    head = ImplicitHead(cfg['num_class'], cfg['num_anchor'], cfg['channels'])
 
 def yolov7(cfg, num_classes):
     head = YOLOv7Loss(num_classes, cfg['stride'], cfg['anchors'])

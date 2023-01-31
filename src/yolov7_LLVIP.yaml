@@ -15,7 +15,7 @@ neck:
 
 head:
     name: implicit_head
-    num_class: 6
+    num_class: 1
     num_anchor: 3
     channels: [256, 512, 1024]
     norm: bn
