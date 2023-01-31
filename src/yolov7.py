@@ -26,6 +26,3 @@ class YOLOv7(nn.Module):
             return self.loss(x, targets)
 
         return x
-
-
-        g
