@@ -11,7 +11,6 @@ class YOLOv7(nn.Module):
         self.input_features = num_features
 
         self.cfg = load_config(cfg_path)
-        self.cfg[]
 
         cbackbone = self.cfg['backbone']
         cneck = self.cfg['neck']
