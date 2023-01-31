@@ -1,6 +1,8 @@
+import yaml
 import torch
 import torch.nn as nn
 import tools.dct as dct_tools
+from yaml.loader import SafeLoader
 
 class DCT2d(nn.Module):
     """ Discrete Cosine Transform 2D Layer with masking lower frequencies
