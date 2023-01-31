@@ -807,19 +807,19 @@ class EELAN(nn.Module):
         print('Initializing stage2...')
         # stage2
         self.stage2 = nn.Sequential(
-            Transition(channels[2], mpk=2, norm=norm, act=act),
+            Transition(channels[2], channels[2], mpk=2, norm=norm, act=act),
             CSPLayer(channels[2], channels[3], expansion=0.5, num_bottle=depths[1], norm=norm, act=act),
         )
         print('Initializing stage3...')
         # stage3
         self.stage3 = nn.Sequential(
-            Transition(channels[3], mpk=2, norm=norm, act=act),
+            Transition(channels[3], channels[3], mpk=2, norm=norm, act=act),
             CSPLayer(channels[3], channels[4], expansion=0.5, num_bottle=depths[2], norm=norm, act=act),
         )
         print('Initializing stage4...')
         # stage4
         self.stage4 = nn.Sequential(
-            Transition(channels[4], mpk=2, norm=norm, act=act),
+            Transition(channels[4], channels[4], mpk=2, norm=norm, act=act),
             SPPBottleneck(channels[4], channels[4], norm=norm, act=act),
             CSPLayer(channels[4], channels[4], expansion=0.5, num_bottle=depths[3], norm=norm, act=act),
         )
