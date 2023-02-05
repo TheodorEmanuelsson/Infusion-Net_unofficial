@@ -29,7 +29,7 @@ class DCT2d(nn.Module):
         return tensor * torch.transpose(mask, 0, 1)
     
     def forward(self, x):
-        dct_transform = dct_tools.dct_2d(x, norm=self.norm)
+        dct_transform = dct_tools.dct_2d(x.float(), norm=self.norm)
 
         if self.mask_freq:
             dct_transform = self.mask_image(dct_transform)
@@ -49,7 +49,7 @@ class IDCT2d(nn.Module):
         self.norm = norm
 
     def forward(self, x):
-        inv_dct_transform = dct_tools.idct_2d(x, norm=self.norm)
+        inv_dct_transform = dct_tools.idct_2d(x.float(), norm=self.norm)
         return inv_dct_transform
 
 class ChannelAttention(nn.Module):
