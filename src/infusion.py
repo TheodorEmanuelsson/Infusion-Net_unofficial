@@ -1,6 +1,8 @@
+import yaml
 import torch
 import torch.nn as nn
 import tools.dct as dct_tools
+from yaml.loader import SafeLoader
 
 class DCT2d(nn.Module):
     """ Discrete Cosine Transform 2D Layer with masking lower frequencies
@@ -27,7 +29,7 @@ class DCT2d(nn.Module):
         return tensor * torch.transpose(mask, 0, 1)
     
     def forward(self, x):
-        dct_transform = dct_tools.dct_2d(x, norm=self.norm)
+        dct_transform = dct_tools.dct_2d(x.float(), norm=self.norm)
 
         if self.mask_freq:
             dct_transform = self.mask_image(dct_transform)
@@ -47,7 +49,7 @@ class IDCT2d(nn.Module):
         self.norm = norm
 
     def forward(self, x):
-        inv_dct_transform = dct_tools.idct_2d(x, norm=self.norm)
+        inv_dct_transform = dct_tools.idct_2d(x.float(), norm=self.norm)
         return inv_dct_transform
 
 class ChannelAttention(nn.Module):
@@ -62,18 +64,19 @@ class ChannelAttention(nn.Module):
     """
 
 
-    def __init__(self, num_features, reduction):
+    def __init__(self, num_features=1, reduction=1):
         super(ChannelAttention, self).__init__()
         self.channel_attention = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
             nn.Conv2d(num_features, num_features // reduction, kernel_size=1),
             nn.ReLU(inplace=True),
-            nn.Conv2d(num_features // reduction, num_features, kernel_size=1),
+            nn.Conv2d(num_features // reduction, num_features , kernel_size=1),
             nn.Sigmoid()
         )
 
     def forward(self, x):
-        return x + self.channel_attention(x)
+        attention = self.channel_attention(x)
+        return x + attention
 
 
 class RCAB(nn.Module):
@@ -86,10 +89,10 @@ class RCAB(nn.Module):
         reduction: int
             Reduction factor for the channel attention module
     """
-    def __init__(self, num_features, reduction):
+    def __init__(self, num_features=1, reduction=1):
         super(RCAB, self).__init__()
         self.rcab = nn.Sequential(
-            nn.Conv2d(num_features, num_features, kernel_size=3, padding=1),
+            nn.Conv2d(1, num_features, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
             nn.Conv2d(num_features, num_features, kernel_size=3, padding=1),
             ChannelAttention(num_features, reduction)
@@ -135,7 +138,7 @@ class HFExtraction(nn.Module):
         norm: str
             Normalization type for DCT
     """
-    def __init__(self, num_features:int, reduction:int, tau:float=0.2, norm:str='ortho'):
+    def __init__(self, num_features:int=1, reduction:int=1, tau:float=0.2, norm:str='ortho'):
         super(HFExtraction, self).__init__()
 
         self.tau = tau
@@ -162,7 +165,7 @@ class HFAssistant(nn.Module):
         norm: str
             Normalization type for DCT
     """
-    def __init__(self, num_features, reduction, tau=0.2, norm='ortho'):
+    def __init__(self, num_features=1, reduction=1, tau=0.2, norm='ortho'):
         super(HFAssistant, self).__init__()
 
         self.tau = tau
@@ -192,11 +195,9 @@ class InputPhaseBlock(nn.Module):
             nn.ReLU(inplace=True),
             nn.Conv2d(num_features, num_features, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
-            # Stride for downsampling
-            nn.Conv2d(num_features, num_features, kernel_size=3, padding=1, stride=2),
+            nn.Conv2d(num_features, num_features, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
-            # Stride for downsampling
-            nn.Conv2d(num_features, num_features, kernel_size=3, padding=1, stride=2),
+            nn.Conv2d(num_features, num_features, kernel_size=3, padding=1),
             nn.ReLU(inplace=True)
         )
 
@@ -206,7 +207,7 @@ class InputPhaseBlock(nn.Module):
         )
 
         self.final_conv = nn.Sequential(
-            nn.Conv2d(num_features*4, num_features, kernel_size=3, padding=1),
+            nn.Conv2d(num_features*4, 1, kernel_size=3, padding=1),
             nn.ReLU(inplace=True)
         )
 
@@ -236,60 +237,57 @@ class InnerPhaseBlock(nn.Module):
     def __init__(self, num_features):
         super(InnerPhaseBlock, self).__init__()
 
-        self.input_double_conv = nn.Sequential(
-            # Stride for downsampling
-            nn.Conv2d(num_features, num_features, kernel_size=3, padding=1, stride=2),
-            nn.ReLU(inplace=True),
-            # Stride for downsampling
-            nn.Conv2d(num_features, num_features, kernel_size=3, padding=1, stride=2),
-            nn.ReLU(inplace=True)
-        )
-
-        self.base_double_conv = nn.Sequential(
-            nn.Conv2d(num_features*2, num_features*2, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(num_features*2, num_features*2, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True)
-        )
+        self.max_pool = nn.MaxPool2d(kernel_size=1, stride=1)
 
         self.input_conv = nn.Sequential(
+            nn.Conv2d(1, num_features, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True)
+        )
+
+        self.input_double_conv = nn.Sequential(
+            nn.Conv2d(1, num_features, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+
             nn.Conv2d(num_features, num_features, kernel_size=3, padding=1),
             nn.ReLU(inplace=True)
         )
 
-        self.base_conv = nn.Sequential(
-            nn.Conv2d(num_features*2, num_features * 2, kernel_size=3, padding=1),
+        self.base_double_conv = nn.Sequential(
+            nn.Conv2d(num_features, num_features, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(num_features, num_features, kernel_size=3, padding=1),
             nn.ReLU(inplace=True)
         )
 
-        self.final_conv = nn.Sequential(
+        self.reduce_conv = nn.Sequential(
             nn.Conv2d(num_features*2, num_features, kernel_size=3, padding=1),
             nn.ReLU(inplace=True)
         )
 
-        self.max_pool = nn.MaxPool2d(kernel_size=4, stride=4)
+        self.final_conv = nn.Sequential(
+            nn.Conv2d(num_features*4, 1, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True)
+        )
+
 
     def forward(self, x):
         x1 = self.max_pool(x)
         x1 = self.input_conv(x1)
         x2 = self.input_double_conv(x)
-
+        
         x = torch.cat([x1, x2], dim=1)
 
-        x1 = self.base_conv(x)
+        x1 = self.reduce_conv(x)
 
-        x2 = self.base_conv(x)
+        x2 = self.reduce_conv(x)
 
         x3 = self.base_double_conv(x2)
 
         x4 = self.base_double_conv(x3)
 
-        # Concatenate the features such that the output has the same size as the input
-        # Not sure if this is the best way to do it
-        concat_height = torch.cat((x1, x2, x3, x4), dim=3)
-        concat_width = torch.cat((concat_height, concat_height, concat_height, concat_height), dim=2)
+        x_out = torch.cat([x1, x2, x3, x4], dim=1)
 
-        return self.final_conv(concat_width)
+        return self.final_conv(x_out)
         
 class WeightFusionParam(nn.Module):
     """ Weighting parameters for the fusion of the two inputs """
@@ -313,7 +311,7 @@ class InfusionNet(nn.Module):
         self.rgb_phase_0 = InputPhaseBlock(num_features)
         self.ir_phase_0 = InputPhaseBlock(num_features)
 
-        self.HFA_0 = HFAssistant(num_features, reduction, tau=self.tau)
+        self.HFA_0 = HFAssistant(tau=self.tau)
         # Weightning parameters Phase 0
         self.rgb_alpha_0 = WeightFusionParam()
         self.ir_alpha_0 = WeightFusionParam()
@@ -324,7 +322,7 @@ class InfusionNet(nn.Module):
         self.rgb_phase_1 = InnerPhaseBlock(num_features)
         self.ir_phase_1 = InnerPhaseBlock(num_features)
 
-        self.HFA_1 = HFAssistant(num_features, reduction, tau=self.tau)
+        self.HFA_1 = HFAssistant(tau=self.tau)
         # Weightning parameters Phase 1
         self.rgb_alpha_1 = WeightFusionParam()
         self.ir_alpha_1 = WeightFusionParam()
@@ -338,7 +336,7 @@ class InfusionNet(nn.Module):
         self.rgb_phase_2 = InnerPhaseBlock(num_features)
         self.ir_phase_2 = InnerPhaseBlock(num_features)
 
-        self.HFA_2 = HFAssistant(num_features, reduction, tau=self.tau)
+        self.HFA_2 = HFAssistant(tau=self.tau)
         # Weightning parameters Phase 2
         self.rgb_alpha_2 = WeightFusionParam()
         self.ir_alpha_2 = WeightFusionParam()
@@ -352,7 +350,7 @@ class InfusionNet(nn.Module):
         self.rgb_phase_3 = InnerPhaseBlock(num_features)
         self.ir_phase_3 = InnerPhaseBlock(num_features)
 
-        self.HFA_3 = HFAssistant(num_features, reduction)
+        self.HFA_3 = HFAssistant()
         # Weightning parameters Phase 3
         self.rgb_alpha_3 = WeightFusionParam()
         self.ir_alpha_3 = WeightFusionParam()
@@ -411,7 +409,6 @@ class InfusionNet(nn.Module):
         ##### Phase 3
         rgb_phase_3 = self.rgb_phase_3(out_rgb_2)
         ir_phase_3 = self.ir_phase_3(out_ir_2)
-
         # Pass through HFA
         rgb_residual_rcab_3, rbg_he_3, ir_residual_rcab_3, ir_he_3  = self.HFA_3(rgb_phase_3, ir_phase_3)
 
@@ -426,6 +423,24 @@ class InfusionNet(nn.Module):
         detection_map = torch.cat((detection_map_1, detection_map_2, detection_map_3), dim=1)
 
         return detection_map
+
+class InfusionDetection(nn.Module):
+    def __init__(self, infusion_model, detection_model):
+        super().__init__()
+
+        self.infusion_model = infusion_model
+        self.model = detection_model
+
+        #print(detection_model.hyp)
+        self.hyp = detection_model.hyp
+
+    def forward(self, x):
+        x = self.infusion_model(x)
+        x = self.model(x)
+
+        return x
+
+
 
 if __name__ == '__main__':
     print('Testing the model')
