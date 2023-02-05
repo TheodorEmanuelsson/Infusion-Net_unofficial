@@ -197,7 +197,7 @@ class InputPhaseBlock(nn.Module):
             nn.ReLU(inplace=True),
             nn.Conv2d(num_features, num_features, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
-            nn.Conv2d(num_features, num_features, kernel_size=3, padding=1, stride=2),
+            nn.Conv2d(num_features, num_features, kernel_size=3, padding=1),
             nn.ReLU(inplace=True)
         )
 
@@ -207,12 +207,11 @@ class InputPhaseBlock(nn.Module):
         )
 
         self.final_conv = nn.Sequential(
-            nn.Conv2d(num_features*4, 1, kernel_size=7, padding=1),
+            nn.Conv2d(num_features*4, 1, kernel_size=3, padding=1),
             nn.ReLU(inplace=True)
         )
 
     def forward(self, x):
-        print(f'Input to phase 0: {x.shape}')
         x = self.four_conv(x)
 
         x1 = self.base_conv(x)
@@ -246,10 +245,9 @@ class InnerPhaseBlock(nn.Module):
         )
 
         self.input_double_conv = nn.Sequential(
-            # Stride for downsampling
             nn.Conv2d(1, num_features, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
-            # Stride for downsampling
+
             nn.Conv2d(num_features, num_features, kernel_size=3, padding=1),
             nn.ReLU(inplace=True)
         )
@@ -273,11 +271,10 @@ class InnerPhaseBlock(nn.Module):
 
 
     def forward(self, x):
-        print(f'Input shape to inner phases: {x.shape}')
         x1 = self.max_pool(x)
         x1 = self.input_conv(x1)
         x2 = self.input_double_conv(x)
-        print(x1.shape, x2.shape)
+        
         x = torch.cat([x1, x2], dim=1)
 
         x1 = self.reduce_conv(x)
@@ -371,7 +368,6 @@ class InfusionNet(nn.Module):
         ir_input = x[:, 3:, :, :]
 
         ##### Phase 0
-        print('Phase 0')
         rgb_phase_0 = self.rgb_phase_0(rgb_input)
         ir_phase_0 = self.ir_phase_0(ir_input)
 
@@ -383,7 +379,6 @@ class InfusionNet(nn.Module):
         out_ir_0 = ir_phase_0 + self.ir_alpha_0(ir_he_0) + self.ir_beta_0(rgb_residual_rcab_0)
 
         ##### Phase 1
-        print('Phase 1')
         rgb_phase_1 = self.rgb_phase_1(out_rgb_0)
         ir_phase_1 = self.ir_phase_1(out_ir_0)
 
@@ -398,7 +393,6 @@ class InfusionNet(nn.Module):
         detection_map_1 = self.rgb_weight_1(out_rgb_1) + self.ir_weight_1(out_ir_1)
 
         ##### Phase 2
-        print('Phase 2')
         rgb_phase_2 = self.rgb_phase_2(out_rgb_1)
         ir_phase_2 = self.ir_phase_2(out_ir_1)
 
@@ -413,10 +407,8 @@ class InfusionNet(nn.Module):
         detection_map_2 = self.rgb_weight_2(out_rgb_2) + self.ir_weight_2(out_ir_2)
 
         ##### Phase 3
-        print('Phase 3')
         rgb_phase_3 = self.rgb_phase_3(out_rgb_2)
         ir_phase_3 = self.ir_phase_3(out_ir_2)
-        print(f'Output phase 3: {rgb_phase_3.shape} {ir_phase_3.shape}')
         # Pass through HFA
         rgb_residual_rcab_3, rbg_he_3, ir_residual_rcab_3, ir_he_3  = self.HFA_3(rgb_phase_3, ir_phase_3)
 
@@ -431,6 +423,24 @@ class InfusionNet(nn.Module):
         detection_map = torch.cat((detection_map_1, detection_map_2, detection_map_3), dim=1)
 
         return detection_map
+
+class InfusionDetection(nn.Module):
+    def __init__(self, infusion_model, detection_model):
+        super().__init__()
+
+        self.infusion_model = infusion_model
+        self.model = detection_model
+
+        #print(detection_model.hyp)
+        self.hyp = detection_model.hyp
+
+    def forward(self, x):
+        x = self.infusion_model(x)
+        x = self.model(x)
+
+        return x
+
+
 
 if __name__ == '__main__':
     print('Testing the model')
